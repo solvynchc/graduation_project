@@ -1,0 +1,64 @@
+{
+  "date": "2026-03-16",
+  "platform": "Kaggle Notebook",
+  "gpu": "Tesla P100 16GB",
+  "python": "3.12.12",
+  "torch": "2.9.0+cu126",
+  "ultralytics": "8.4.21",
+  "experiment_name": "yolo11n_seg_dysample_g8_scope_raw_aux_kaggle",
+  "command": [
+    "python",
+    "train_g8_scope_raw_aux.py",
+    "--data-root",
+    "/kaggle/input/datasets/chcchc/yolo-isic-2018/YOLO_Dataset_Ready",
+    "--epochs",
+    "50",
+    "--imgsz",
+    "640",
+    "--batch",
+    "8",
+    "--device",
+    "0",
+    "--workers",
+    "2",
+    "--name",
+    "yolo11n_seg_dysample_g8_scope_raw_aux_kaggle",
+    "--raw-mask-dir",
+    "/kaggle/input/datasets/chcchc/isic2018-task1-training-groundtruth/ISIC2018_Task1_Training_GroundTruth"
+  ],
+  "training": {
+    "patience": 15,
+    "best_epoch": 32,
+    "stop_epoch": 47,
+    "train_hours": 2.3,
+    "best_weight_mb": 6.2,
+    "last_weight_mb": 6.2
+  },
+  "model": {
+    "name": "YOLO11n_seg_dysample_g8_scope_raw_aux",
+    "layers": 118,
+    "params": 2921036,
+    "gflops": 9.6
+  },
+  "metrics": {
+    "box_precision": 0.955,
+    "box_recall": 0.923,
+    "box_map50": 0.97,
+    "box_map50_95": 0.728,
+    "mask_precision": 0.964,
+    "mask_recall": 0.906,
+    "mask_map50": 0.963,
+    "mask_map50_95": 0.714
+  },
+  "speed_ms_per_image": {
+    "preprocess": 0.6,
+    "inference": 2.7,
+    "loss": 0.0,
+    "postprocess": 2.1
+  },
+  "conclusion": {
+    "pipeline_runs": true,
+    "beats_g8_scope_baseline": false,
+    "recommended_next_step": "raw-mask aux + edge head"
+  }
+}
