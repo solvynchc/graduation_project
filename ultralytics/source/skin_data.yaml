@@ -1,0 +1,6 @@
+path: /kaggle/input/datasets/chcchc/yolo-isic-2018/YOLO_Dataset_Ready
+train: images/train
+val: images/val
+
+names:
+  0: lesion

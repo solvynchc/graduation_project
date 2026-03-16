@@ -1,0 +1,68 @@
+[
+  {
+    "model_key": "baseline_yolo11n_seg",
+    "model": "YOLO11n-seg baseline",
+    "params": 2834763,
+    "best_weight_mb": 5.727,
+    "precision_m": 0.9706,
+    "recall_m": 0.9364,
+    "map50_m": 0.9817,
+    "map50_95_m": 0.7353,
+    "fitness": 1.4952
+  },
+  {
+    "model_key": "yolo11n_seg_cbam",
+    "model": "+ CBAM",
+    "params": 2921521,
+    "best_weight_mb": 5.9,
+    "precision_m": 0.9667,
+    "recall_m": 0.951,
+    "map50_m": 0.9821,
+    "map50_95_m": 0.7355,
+    "fitness": 1.4967
+  },
+  {
+    "model_key": "yolo11n_seg_dysample",
+    "model": "+ DySample (g4)",
+    "params": 2847115,
+    "best_weight_mb": 5.752,
+    "precision_m": 0.979,
+    "recall_m": 0.9422,
+    "map50_m": 0.9855,
+    "map50_95_m": 0.7392,
+    "fitness": 1.5063
+  },
+  {
+    "model_key": "yolo11n_seg_dysample_g8",
+    "model": "+ DySample g8",
+    "params": 2859467,
+    "best_weight_mb": 5.776,
+    "precision_m": 0.955,
+    "recall_m": 0.9461,
+    "map50_m": 0.9793,
+    "map50_95_m": 0.7417,
+    "fitness": 1.5051
+  },
+  {
+    "model_key": "yolo11n_seg_dysample_g8_scope",
+    "model": "+ DySample g8_scope",
+    "params": 2884043,
+    "best_weight_mb": 5.824,
+    "precision_m": 0.9554,
+    "recall_m": 0.9496,
+    "map50_m": 0.9806,
+    "map50_95_m": 0.743,
+    "fitness": 1.5118
+  },
+  {
+    "model_key": "yolo11n_seg_dysample_g8_scope_cbam_backbone_fix",
+    "model": "+ DySample g8_scope + CBAM(backbone fix)",
+    "params": 2949933,
+    "best_weight_mb": 5.952,
+    "precision_m": 0.9705,
+    "recall_m": 0.948,
+    "map50_m": 0.9843,
+    "map50_95_m": 0.7403,
+    "fitness": 1.5063
+  }
+]

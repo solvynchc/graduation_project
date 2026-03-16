@@ -1,0 +1,8 @@
+{
+  "num_images": 519,
+  "total_seconds": 45.00384259223938,
+  "avg_inference_ms": 86.71260615075026,
+  "fps": 11.532348575263619,
+  "imgsz": 640,
+  "device": "0"
+}
