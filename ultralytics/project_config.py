@@ -14,6 +14,7 @@ PRETRAINED = "yolo11n-seg.pt"
 MODEL_YAML = Path("source/yolo11n_seg_dysample_g8_scope.yaml")
 MODEL_YAML_RAW_AUX = Path("source/yolo11n_seg_dysample_g8_scope_raw_aux.yaml")
 MODEL_YAML_RAW_AUX_EDGE = Path("source/yolo11n_seg_dysample_g8_scope_raw_aux_edge.yaml")
+MODEL_YAML_RAW_AUX_EDGE_P2 = Path("source/yolo11n_seg_dysample_g8_scope_raw_aux_edge_p2.yaml")
 FINAL_MODEL = Path("runs/yolo11n_seg_dysample_g8_scope/weights/best.pt")
 
 EPOCHS = 50
@@ -32,6 +33,7 @@ TRAIN_PROJECT = "runs"
 TRAIN_NAME = "yolo11n_seg_dysample_g8_scope_pycharm"
 TRAIN_NAME_RAW_AUX = "yolo11n_seg_dysample_g8_scope_raw_aux"
 TRAIN_NAME_RAW_AUX_EDGE = "yolo11n_seg_dysample_g8_scope_raw_aux_edge"
+TRAIN_NAME_RAW_AUX_EDGE_P2 = "yolo11n_seg_dysample_g8_scope_raw_aux_edge_p2"
 PREDICT_PROJECT = "predict_results"
 PREDICT_NAME = "g8_scope_predict"
 CONF = 0.25

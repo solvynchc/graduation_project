@@ -46,6 +46,7 @@ __all__ = (
     "HGStem",
     "ImagePoolingAttn",
     "Proto",
+    "ProtoP2",
     "RepC3",
     "RepNCSPELAN4",
     "RepVGGDW",
@@ -111,6 +112,45 @@ class Proto(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Perform a forward pass through layers using an upsampled input image."""
         feat = self.cv2(self.upsample(self.cv1(x)))
+        protos = self.cv3(feat)
+        if self.training and (self.aux_mask is not None or self.aux_edge is not None):
+            outputs = [protos]
+            if self.aux_mask is not None:
+                outputs.append(self.aux_mask(feat))
+            if self.aux_edge is not None:
+                outputs.append(self.aux_edge(feat))
+            return tuple(outputs)
+        return protos
+
+
+class ProtoP2(nn.Module):
+    """Prototype branch with shallow P2 fusion for high-resolution boundary refinement."""
+
+    def __init__(
+        self,
+        c1: int,
+        c_p2: int,
+        c_: int = 256,
+        c2: int = 32,
+        aux_mask: bool = False,
+        aux_edge: bool = False,
+    ):
+        super().__init__()
+        self.cv1 = Conv(c1, c_, k=3)
+        self.upsample = nn.ConvTranspose2d(c_, c_, 2, 2, 0, bias=True)
+        self.p2_reduce = Conv(c_p2, c_ // 2, k=1)
+        self.fuse_dw = DWConv(c_ + c_ // 2, c_ + c_ // 2, 3)
+        self.fuse_pw = Conv(c_ + c_ // 2, c_, k=1)
+        self.cv3 = Conv(c_, c2)
+        self.aux_mask = nn.Sequential(Conv(c_, c_, k=3), nn.Conv2d(c_, 1, 1)) if aux_mask else None
+        self.aux_edge = nn.Sequential(Conv(c_, c_, k=3), nn.Conv2d(c_, 1, 1)) if aux_edge else None
+
+    def forward(self, x: torch.Tensor, p2: torch.Tensor) -> torch.Tensor:
+        feat = self.upsample(self.cv1(x))
+        p2_feat = self.p2_reduce(p2)
+        if p2_feat.shape[-2:] != feat.shape[-2:]:
+            p2_feat = F.interpolate(p2_feat, size=feat.shape[-2:], mode="bilinear", align_corners=False)
+        feat = self.fuse_pw(self.fuse_dw(torch.cat([feat, p2_feat], dim=1)))
         protos = self.cv3(feat)
         if self.training and (self.aux_mask is not None or self.aux_edge is not None):
             outputs = [protos]
