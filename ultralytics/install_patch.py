@@ -22,6 +22,7 @@ def main():
         ("data/build.py", "data/build.py"),
         ("data/dataset.py", "data/dataset.py"),
         ("utils/loss.py", "utils/loss.py"),
+        ("models/yolo/segment/train.py", "models/yolo/segment/train.py"),
     ]
 
     for src_rel, dst_rel in files:
