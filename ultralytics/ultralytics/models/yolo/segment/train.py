@@ -64,8 +64,10 @@ class SegmentationTrainer(yolo.detect.DetectionTrainer):
     def get_validator(self):
         """Return an instance of SegmentationValidator for validation of YOLO model."""
         head_name = getattr(self.model.model[-1], "__class__", type("Head", (), {})).__name__
-        if head_name == "SegmentAuxEdge":
+        if head_name in {"SegmentAuxEdge", "SegmentAuxEdgeP2"}:
             self.loss_names = "box_loss", "seg_loss", "cls_loss", "dfl_loss", "sem_loss", "edge_loss"
+        elif head_name == "SegmentResidualBand":
+            self.loss_names = "box_loss", "seg_loss", "cls_loss", "dfl_loss", "residual_loss"
         else:
             self.loss_names = "box_loss", "seg_loss", "cls_loss", "dfl_loss", "sem_loss"
         return yolo.segment.SegmentationValidator(

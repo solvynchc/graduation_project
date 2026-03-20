@@ -311,6 +311,54 @@ class BCEDiceLoss(nn.Module):
         return self.weight_bce * self.bce(pred, target) + self.weight_dice * self.dice(pred, target)
 
 
+class TverskyLoss(nn.Module):
+    """Binary Tversky loss with controllable FP/FN trade-off for imbalanced segmentation."""
+
+    def __init__(self, alpha: float = 0.3, beta: float = 0.7, smooth: float = 1.0):
+        super().__init__()
+        self.alpha = alpha
+        self.beta = beta
+        self.smooth = smooth
+
+    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        _, _, mask_h, mask_w = pred.shape
+        if tuple(target.shape[-2:]) != (mask_h, mask_w):
+            target = F.interpolate(target, (mask_h, mask_w), mode="nearest")
+
+        pred = pred.sigmoid()
+        pred = pred.flatten(1)
+        target = target.float().flatten(1)
+
+        tp = (pred * target).sum(dim=1)
+        fp = (pred * (1 - target)).sum(dim=1)
+        fn = ((1 - pred) * target).sum(dim=1)
+        tversky = (tp + self.smooth) / (tp + self.alpha * fp + self.beta * fn + self.smooth)
+        return (1.0 - tversky).mean()
+
+
+class BCETverskyLoss(nn.Module):
+    """Stable residual-band loss that blends BCE with Tversky regularization."""
+
+    def __init__(
+        self,
+        weight_bce: float = 0.5,
+        weight_tversky: float = 0.5,
+        alpha: float = 0.3,
+        beta: float = 0.7,
+    ):
+        super().__init__()
+        self.weight_bce = weight_bce
+        self.weight_tversky = weight_tversky
+        self.bce = nn.BCEWithLogitsLoss()
+        self.tversky = TverskyLoss(alpha=alpha, beta=beta, smooth=1.0)
+
+    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        _, _, mask_h, mask_w = pred.shape
+        if tuple(target.shape[-2:]) != (mask_h, mask_w):
+            target = F.interpolate(target, (mask_h, mask_w), mode="nearest")
+        return self.weight_bce * self.bce(pred, target) + self.weight_tversky * self.tversky(pred, target)
+
+
 class KeypointLoss(nn.Module):
     """Criterion class for computing keypoint losses."""
 
@@ -475,20 +523,40 @@ class v8SegmentationLoss(v8DetectionLoss):
         """Initialize the v8SegmentationLoss class with model parameters and mask overlap setting."""
         super().__init__(model, tal_topk, tal_topk2)
         self.overlap = model.args.overlap_mask
+        self.head_name = getattr(model.model[-1], "__class__", type("Head", (), {})).__name__
+        self.use_edge_aux = self.head_name in {"SegmentAuxEdge", "SegmentAuxEdgeP2"}
+        self.use_residual_band = self.head_name == "SegmentResidualBand"
         self.bcedice_loss = BCEDiceLoss(weight_bce=0.5, weight_dice=0.5)
         self.edge_loss = BCEDiceLoss(weight_bce=0.7, weight_dice=0.3)
+        self.residual_loss = BCETverskyLoss(weight_bce=0.5, weight_tversky=0.5, alpha=0.3, beta=0.7)
+        self.current_epoch = 0
+        self.residual_start_epoch = int(getattr(model.args, "residual_start_epoch", 20))
+        self.residual_ramp_epochs = max(int(getattr(model.args, "residual_ramp_epochs", 20)), 1)
+        self.residual_loss_gain = float(getattr(model.args, "residual_loss_gain", 0.15))
+
+    def update(self):
+        """Advance the internal epoch counter used by late-start auxiliary scheduling."""
+        self.current_epoch += 1
+
+    def residual_schedule_weight(self) -> float:
+        """Linearly ramp residual supervision after the initial warm-up stage."""
+        if not self.use_residual_band:
+            return 1.0
+        if self.current_epoch < self.residual_start_epoch:
+            return 0.0
+        progress = (self.current_epoch - self.residual_start_epoch + 1) / self.residual_ramp_epochs
+        return float(min(max(progress, 0.0), 1.0))
 
     def loss(self, preds: dict[str, torch.Tensor], batch: dict[str, torch.Tensor]) -> tuple[torch.Tensor, torch.Tensor]:
         """Calculate and return the combined loss for detection and segmentation."""
         pred_masks, proto = preds["mask_coefficient"].permute(0, 2, 1).contiguous(), preds["proto"]
-        loss = torch.zeros(6, device=self.device)  # box, seg, cls, dfl, aux_mask/semseg, edge
+        loss = torch.zeros(6 if self.use_edge_aux else 5, device=self.device)  # box, seg, cls, dfl, aux, edge?
+        pred_aux = None
         pred_aux_edge = None
         if isinstance(proto, tuple) and len(proto) == 3:
-            proto, pred_semseg, pred_aux_edge = proto
+            proto, pred_aux, pred_aux_edge = proto
         elif isinstance(proto, tuple) and len(proto) == 2:
-            proto, pred_semseg = proto
-        else:
-            pred_semseg = None
+            proto, pred_aux = proto
         (fg_mask, target_gt_idx, target_bboxes, _, _), det_loss, _ = self.get_assigned_targets_and_loss(preds, batch)
         # NOTE: re-assign index for consistency for now. Need to be removed in the future.
         loss[0], loss[2], loss[3] = det_loss[0], det_loss[1], det_loss[2]
@@ -514,10 +582,18 @@ class v8SegmentationLoss(v8DetectionLoss):
                 pred_masks,
                 imgsz,
             )
-            if pred_semseg is not None:
-                if "aux_mask" in batch and pred_semseg.shape[1] == 1:
+            if pred_aux is not None:
+                if self.use_residual_band and "aux_residual_band" in batch:
+                    residual_target = batch["aux_residual_band"].to(self.device).float()
+                    residual_weight = self.residual_schedule_weight()
+                    if residual_weight > 0:
+                        loss[4] = self.residual_loss(pred_aux, residual_target)
+                        loss[4] *= self.residual_loss_gain * residual_weight
+                    else:
+                        loss[4] += (pred_aux * 0).sum()
+                elif "aux_mask" in batch and pred_aux.shape[1] == 1:
                     aux_mask = batch["aux_mask"].to(self.device).float()
-                    loss[4] = self.bcedice_loss(pred_semseg, aux_mask)
+                    loss[4] = self.bcedice_loss(pred_aux, aux_mask)
                     loss[4] *= 0.4
                 else:
                     sem_masks = batch["sem_masks"].to(self.device)  # NxHxW
@@ -534,9 +610,9 @@ class v8SegmentationLoss(v8DetectionLoss):
                                 continue
                             sem_masks[i, :, instance_mask_i.sum(dim=0) == 0] = 0
 
-                    loss[4] = self.bcedice_loss(pred_semseg, sem_masks)
+                    loss[4] = self.bcedice_loss(pred_aux, sem_masks)
                     loss[4] *= self.hyp.box  # seg gain
-            if pred_aux_edge is not None and "aux_edge" in batch:
+            if self.use_edge_aux and pred_aux_edge is not None and "aux_edge" in batch:
                 aux_edge = batch["aux_edge"].to(self.device).float()
                 loss[5] = self.edge_loss(pred_aux_edge, aux_edge)
                 loss[5] *= 0.2
@@ -544,13 +620,13 @@ class v8SegmentationLoss(v8DetectionLoss):
         # WARNING: lines below prevent Multi-GPU DDP 'unused gradient' PyTorch errors, do not remove
         else:
             loss[1] += (proto * 0).sum() + (pred_masks * 0).sum()  # inf sums may lead to nan loss
-            if pred_semseg is not None:
-                loss[4] += (pred_semseg * 0).sum()
-            if pred_aux_edge is not None:
+            if pred_aux is not None:
+                loss[4] += (pred_aux * 0).sum()
+            if self.use_edge_aux and pred_aux_edge is not None:
                 loss[5] += (pred_aux_edge * 0).sum()
 
         loss[1] *= self.hyp.box  # seg gain
-        return loss * batch_size, loss.detach()  # loss(box, seg, cls, dfl, aux_mask/semseg, edge)
+        return loss * batch_size, loss.detach()  # loss(box, seg, cls, dfl, aux/residual, edge?)
 
     @staticmethod
     def single_mask_loss(

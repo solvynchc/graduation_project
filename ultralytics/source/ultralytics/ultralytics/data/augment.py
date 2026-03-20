@@ -1625,10 +1625,13 @@ class LetterBox:
 
         aux_mask = labels.get("aux_mask")
         aux_edge = labels.get("aux_edge")
+        aux_residual_band = labels.get("aux_residual_band")
         if aux_mask is not None and aux_mask.shape[::-1] != new_unpad:
             aux_mask = cv2.resize(aux_mask, new_unpad, interpolation=cv2.INTER_NEAREST)
         if aux_edge is not None and aux_edge.shape[::-1] != new_unpad:
             aux_edge = cv2.resize(aux_edge, new_unpad, interpolation=cv2.INTER_NEAREST)
+        if aux_residual_band is not None and aux_residual_band.shape[::-1] != new_unpad:
+            aux_residual_band = cv2.resize(aux_residual_band, new_unpad, interpolation=cv2.INTER_NEAREST)
 
         top, bottom = round(dh - 0.1) if self.center else 0, round(dh + 0.1)
         left, right = round(dw - 0.1) if self.center else 0, round(dw + 0.1)
@@ -1647,6 +1650,11 @@ class LetterBox:
         if aux_edge is not None:
             aux_edge = cv2.copyMakeBorder(aux_edge, top, bottom, left, right, cv2.BORDER_CONSTANT, value=0)
             labels["aux_edge"] = aux_edge
+        if aux_residual_band is not None:
+            aux_residual_band = cv2.copyMakeBorder(
+                aux_residual_band, top, bottom, left, right, cv2.BORDER_CONSTANT, value=0
+            )
+            labels["aux_residual_band"] = aux_residual_band
 
         if labels.get("ratio_pad"):
             labels["ratio_pad"] = (labels["ratio_pad"], (left, top))  # for evaluation
@@ -2104,6 +2112,11 @@ class Format:
             if aux_edge.ndim == 2:
                 aux_edge = aux_edge[None]
             labels["aux_edge"] = torch.from_numpy((aux_edge > 0).astype(np.float32))
+        if "aux_residual_band" in labels:
+            aux_residual_band = labels["aux_residual_band"]
+            if aux_residual_band.ndim == 2:
+                aux_residual_band = aux_residual_band[None]
+            labels["aux_residual_band"] = torch.from_numpy((aux_residual_band > 0).astype(np.float32))
         labels["img"] = self._format_img(img)
         labels["cls"] = torch.from_numpy(cls) if nl else torch.zeros(nl, 1)
         labels["bboxes"] = torch.from_numpy(instances.bboxes) if nl else torch.zeros((nl, 4))

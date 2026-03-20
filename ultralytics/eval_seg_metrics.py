@@ -75,7 +75,10 @@ def calc_metrics(pred: np.ndarray, gt: np.ndarray) -> dict[str, float]:
 
     precision = tp / (tp + fp + eps)
     recall = tp / (tp + fn + eps)
+    sensitivity = recall
+    specificity = tn / (tn + fp + eps)
     iou = tp / (tp + fp + fn + eps)
+    thresholded_jaccard = iou if iou >= 0.65 else 0.0
     dice = 2 * tp / (2 * tp + fp + fn + eps)
     accuracy = (tp + tn) / (tp + tn + fp + fn + eps)
 
@@ -86,7 +89,11 @@ def calc_metrics(pred: np.ndarray, gt: np.ndarray) -> dict[str, float]:
         "tn": float(tn),
         "precision": float(precision),
         "recall": float(recall),
+        "sensitivity": float(sensitivity),
+        "specificity": float(specificity),
         "iou": float(iou),
+        "raw_jaccard": float(iou),
+        "thresholded_jaccard": float(thresholded_jaccard),
         "dice": float(dice),
         "accuracy": float(accuracy),
     }
@@ -104,7 +111,12 @@ def main():
     if not label_dir.exists():
         raise FileNotFoundError(f"label directory not found: {label_dir}")
 
-    model = YOLO(str(root / args.model))
+    model_path = Path(args.model)
+    if not model_path.is_absolute():
+        model_path = root / model_path
+    model = YOLO(str(model_path))
+    model_size_mb = model_path.stat().st_size / (1024 * 1024)
+    model_params = sum(p.numel() for p in model.model.parameters())
     image_paths = sorted([p for p in image_dir.iterdir() if p.suffix.lower() in {".jpg", ".jpeg", ".png"}])
     rows: list[dict[str, float | str]] = []
 
@@ -138,9 +150,15 @@ def main():
         "num_images": int(len(df)),
         "precision": float(df["precision"].mean()),
         "recall": float(df["recall"].mean()),
+        "sensitivity": float(df["sensitivity"].mean()),
+        "specificity": float(df["specificity"].mean()),
         "iou": float(df["iou"].mean()),
+        "raw_jaccard": float(df["raw_jaccard"].mean()),
+        "thresholded_jaccard": float(df["thresholded_jaccard"].mean()),
         "dice": float(df["dice"].mean()),
         "accuracy": float(df["accuracy"].mean()),
+        "params": int(model_params),
+        "model_size_mb": float(model_size_mb),
     }
 
     save_dir = root / args.save_dir

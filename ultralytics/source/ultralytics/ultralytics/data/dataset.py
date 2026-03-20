@@ -295,7 +295,7 @@ class YOLODataset(BaseDataset):
         values = list(zip(*[list(b.values()) for b in batch]))
         for i, k in enumerate(keys):
             value = values[i]
-            if k in {"img", "text_feats", "sem_masks", "aux_mask", "aux_edge"}:
+            if k in {"img", "text_feats", "sem_masks", "aux_mask", "aux_edge", "aux_residual_band"}:
                 value = torch.stack(value, 0)
             elif k == "visuals":
                 value = torch.nn.utils.rnn.pad_sequence(value, batch_first=True)
@@ -317,6 +317,7 @@ class RawMaskYOLODataset(YOLODataset):
         self.raw_mask_zip = Path(data["raw_mask_zip"]) if data and data.get("raw_mask_zip") else None
         self.raw_mask_suffix = data.get("raw_mask_suffix", "_segmentation.png") if data else "_segmentation.png"
         self.raw_mask_zip_root = data.get("raw_mask_zip_root", "") if data else ""
+        self.residual_band_kernel = int(data.get("residual_band_kernel", 5)) if data else 5
         super().__init__(*args, data=data, **kwargs)
 
     def _read_mask_from_dir(self, image_stem: str) -> np.ndarray | None:
@@ -368,10 +369,42 @@ class RawMaskYOLODataset(YOLODataset):
         edge = cv2.bitwise_xor(dilated, eroded)
         return (edge > 0).astype(np.uint8)
 
+    @staticmethod
+    def build_polygon_mask(segments: list[np.ndarray], image_shape: tuple[int, int]) -> np.ndarray:
+        """Rasterize YOLO polygon annotations into a binary mask at original image resolution."""
+        h, w = image_shape
+        mask = np.zeros((h, w), dtype=np.uint8)
+        if not segments:
+            return mask
+
+        for segment in segments:
+            coords = np.asarray(segment, dtype=np.float32).reshape(-1, 2)
+            if len(coords) < 3:
+                continue
+            points = np.stack([coords[:, 0] * w, coords[:, 1] * h], axis=1)
+            points = np.round(points).astype(np.int32).reshape(-1, 1, 2)
+            cv2.fillPoly(mask, [points], 1)
+        return mask
+
+    @staticmethod
+    def build_residual_band(raw_mask: np.ndarray, polygon_mask: np.ndarray, kernel_size: int = 5) -> np.ndarray:
+        """Build a narrow residual band that highlights the disagreement between raw and polygon masks."""
+        raw_binary = (raw_mask > 0).astype(np.uint8)
+        polygon_binary = (polygon_mask > 0).astype(np.uint8)
+        residual = cv2.bitwise_xor(raw_binary, polygon_binary)
+        if kernel_size > 1:
+            kernel = np.ones((kernel_size, kernel_size), dtype=np.uint8)
+            residual = cv2.dilate(residual, kernel, iterations=1)
+        return (residual > 0).astype(np.uint8)
+
     def get_image_and_label(self, index: int) -> dict[str, Any]:
         label = super().get_image_and_label(index)
         label["aux_mask"] = self.load_raw_mask(label["im_file"], label["ori_shape"])
+        polygon_mask = self.build_polygon_mask(label.get("segments", []), label["ori_shape"])
         label["aux_edge"] = self.build_edge_mask(label["aux_mask"])
+        label["aux_residual_band"] = self.build_residual_band(
+            label["aux_mask"], polygon_mask, kernel_size=self.residual_band_kernel
+        )
         return label
 
 

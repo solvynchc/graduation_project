@@ -30,6 +30,7 @@ __all__ = (
     "SegmentAux",
     "SegmentAuxEdge",
     "SegmentAuxEdgeP2",
+    "SegmentResidualBand",
     "YOLOEDetect",
     "YOLOESegment",
     "v10Detect",
@@ -382,6 +383,14 @@ class SegmentAuxEdge(Segment):
     def __init__(self, nc: int = 80, nm: int = 32, npr: int = 256, reg_max=16, end2end=False, ch: tuple = ()):
         super().__init__(nc, nm, npr, reg_max, end2end, ch)
         self.proto = Proto(ch[0], self.npr, self.nm, aux_mask=True, aux_edge=True)
+
+
+class SegmentResidualBand(Segment):
+    """Segment head with a residual-band correction branch for training-time supervision."""
+
+    def __init__(self, nc: int = 80, nm: int = 32, npr: int = 256, reg_max=16, end2end=False, ch: tuple = ()):
+        super().__init__(nc, nm, npr, reg_max, end2end, ch)
+        self.proto = Proto(ch[0], self.npr, self.nm, aux_mask=True)
 
 
 class SegmentAuxEdgeP2(Detect):
